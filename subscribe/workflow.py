@@ -123,6 +123,10 @@ def execute(task_conf: TaskConfig) -> list:
         invite_code=task_conf.invite_code,
     )
 
+    # 回填注册成功的账号凭据（供 collect.py 收集后推给 checkin）
+    task_conf.email = obj.username
+    task_conf.passwd = obj.password
+
     proxies = obj.parse(
         cookie=cookie,
         auth=authorization,
