@@ -777,12 +777,88 @@ class Emailnator(TemporaryMail):
         return True
 
 
+class TempMailC(TemporaryMail):
+    def __init__(self) -> None:
+        self.api_address = "https://tempmailc.com/api/v1"
+
+    def get_domains_list(self) -> list:
+        content = utils.http_get(url=f"{self.api_address}/domains", retry=1)
+        if not content:
+            return []
+        try:
+            return list(json.loads(content).get("domains", []))
+        except:
+            logger.error(f"[MailTMError] cannot parse domains response, domain: {self.api_address}")
+            return []
+
+    def get_account(self, retry: int = 3) -> Account:
+        if retry <= 0:
+            return None
+        content = utils.http_get(url=f"{self.api_address}/new", retry=1)
+        if not content:
+            return self.get_account(retry=retry - 1)
+        try:
+            address = json.loads(content).get("email", "")
+            if not address:
+                return self.get_account(retry=retry - 1)
+            return Account(address=address)
+        except:
+            return self.get_account(retry=retry - 1)
+
+    def get_messages(self, account: Account) -> list:
+        if not account:
+            return []
+        content = utils.http_get(
+            url=f"{self.api_address}/inbox",
+            params={"email": account.address},
+            retry=1,
+        )
+        if not content:
+            return []
+        try:
+            dataset = json.loads(content).get("messages", []) or []
+            messages = []
+            for item in dataset:
+                msg_id = item.get("id", "")
+                if not msg_id:
+                    continue
+                detail = utils.http_get(
+                    url=f"{self.api_address}/message",
+                    params={"email": account.address, "msg_id": msg_id},
+                    retry=1,
+                )
+                if not detail:
+                    continue
+                try:
+                    data = json.loads(detail)
+                except:
+                    continue
+                text = data.get("text", "") or data.get("html", "")
+                html = data.get("html", "") or text
+                messages.append(
+                    Message(
+                        id=msg_id,
+                        sender={item.get("from", ""): item.get("from", "")},
+                        to={account.address: account.address},
+                        subject=data.get("subject", "") or item.get("subject", ""),
+                        intro=item.get("date", ""),
+                        text=text,
+                        html=html,
+                    )
+                )
+            return messages
+        except:
+            logger.error(f"[MailTMError] cannot get messages, domain: {self.api_address}, address: {account.address}")
+            return []
+
+    def delete_account(self, account: Account) -> bool:
+        logger.info(f"[MailTMError] not support delete account, domain: {self.api_address}, address: {account.address if account else ''}")
+        return True
+
+
 def create_instance(only_gmail: bool = False) -> TemporaryMail:
     if only_gmail:
         return Emailnator(onlygmail=True)
 
-    num = random.randint(0, 1)
-    if num == 1:
-        return MailTM()
-    else:
-        return MOAKT()
+    candidates = [MailTM, SnapMail, TempMailC]
+    return random.choice(candidates)()
