@@ -150,6 +150,30 @@ python subscribe/process.py -s config.json --check
 python subscribe/process.py -s config.json -n 128
 ```
 
+### 🐳 Docker 使用
+
+预构建多架构镜像（linux/amd64、linux/arm64）已发布到 GHCR，可直接拉取使用：
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/wzdnzd/aggregator:latest
+
+# 跑 collect（默认命令）
+docker run --rm -v $(pwd)/data:/aggregator/data ghcr.io/wzdnzd/aggregator:latest
+
+# 跑 process / refresh / checkin
+docker run --rm -v $(pwd)/data:/aggregator/data ghcr.io/wzdnzd/aggregator:latest process --overwrite
+docker run --rm -v $(pwd)/data:/aggregator/data ghcr.io/wzdnzd/aggregator:latest refresh
+docker run --rm -v $(pwd)/data:/aggregator/data ghcr.io/wzdnzd/aggregator:latest checkin
+
+# 或用 docker-compose（自动挂载本地源码，热改热跑）
+export GIST_PAT=xxx GIST_LINK=user/id
+docker compose run --rm aggregator
+docker compose run --rm aggregator process --overwrite
+```
+
+镜像内含 Python 3.12、所有 pip 依赖、clash/mihomo + subconverter 多平台二进制，无需本地安装任何东西。详见 `docs/DOCKER_INTEGRATION_PLAN.md`。
+
 
 ## 📚 相关文档
 
