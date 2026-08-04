@@ -21,6 +21,24 @@ jobs:
           python-version: "3.x"
           architecture: "x64"
 
+      - name: Fetch checkin config from Gist
+        env:
+          GIST_LINK: ${{ secrets.GIST_LINK }}
+        continue-on-error: true
+        run: |
+          if [ -z "$GIST_LINK" ]; then
+            echo "GIST_LINK not set, skipping fetch (using repo placeholder)"
+            exit 0
+          fi
+          USER=$(echo "$GIST_LINK" | cut -d/ -f1)
+          ID=$(echo "$GIST_LINK" | cut -d/ -f2)
+          if curl -fsSL "https://gist.githubusercontent.com/${USER}/${ID}/raw/checkin-config.json" \
+               -o .github/actions/checkin/config.json; then
+            echo "Fetched checkin config from Gist ($(wc -c < .github/actions/checkin/config.json) bytes)"
+          else
+            echo "No checkin config in Gist yet, keeping repo placeholder"
+          fi
+
       - name: Run Checkin Script
         run: |
           python ./.github/actions/checkin/universal.py || echo "Checkin script failed"
