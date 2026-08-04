@@ -5,6 +5,7 @@
 
 import argparse
 import itertools
+import json
 import os
 import random
 import re
@@ -195,6 +196,56 @@ def assign(
         )
 
     return tasks
+
+
+def _collect_checkin_entries(tasks: list) -> list:
+    """从 tasks 中收集本次新注册机场的凭据，转换为 checkin universal.py 期望的 entry 格式。
+
+    仅收集 domain 注册（非已有 sub）且凭据非空的 task。同一机场多次出现由 domain-keyed 字典去重。
+    """
+    entries = []
+    for t in tasks or []:
+        if not t or not getattr(t, "email", "") or not getattr(t, "passwd", ""):
+            continue
+        if getattr(t, "sub", ""):
+            # 已有订阅（人工维护 / refresh 复用），不视为新注册
+            continue
+        domain = utils.trim(getattr(t, "domain", ""))
+        if not domain:
+            continue
+        if not domain.startswith("http"):
+            domain = f"https://{domain}"
+        entries.append(
+            {
+                "domain": domain,
+                "param": {
+                    "email": t.email,
+                    "passwd": t.passwd,
+                    "login": "/auth/login",
+                    "checkin": "/user/checkin",
+                },
+            }
+        )
+    return entries
+
+
+def _load_existing_checkin(username: str, gist_id: str, filename: str) -> dict:
+    """从 Gist 拉取已有 checkin-config.json（公开访问即可），返回 domain -> entry 的字典。
+
+    拉取失败或解析失败返回空 dict（视为首次推送）。
+    """
+    if not username or not gist_id:
+        return {}
+    url = f"https://gist.githubusercontent.com/{username}/{gist_id}/raw/{filename}"
+    try:
+        content = utils.http_get(url=url)
+        if not content or not content.strip().startswith("{"):
+            return {}
+        data = json.loads(content)
+        entries = data.get("domains", []) or []
+        return {utils.trim(e.get("domain", "")): e for e in entries if isinstance(e, dict) and e.get("domain")}
+    except:
+        return {}
 
 
 def aggregate(args: argparse.Namespace) -> None:
@@ -397,6 +448,18 @@ def aggregate(args: argparse.Namespace) -> None:
 
         if urls:
             files[subscribes_file] = {"content": "\n".join(urls), "filename": subscribes_file}
+
+        # 收集本次新注册的机场凭据，合并已有 Gist 配置后作为 checkin 入参推送
+        checkin_filename = "checkin-config.json"
+        checkin_entries = _collect_checkin_entries(tasks=tasks)
+        if checkin_entries:
+            merged = _load_existing_checkin(username=username, gist_id=gist_id, filename=checkin_filename)
+            for entry in checkin_entries:
+                merged[entry["domain"]] = entry
+            files[checkin_filename] = {
+                "content": json.dumps({"domains": list(merged.values())}, ensure_ascii=False, indent=2),
+                "filename": checkin_filename,
+            }
 
         if files:
             push_client = push.PushToGist(token=access_token)
