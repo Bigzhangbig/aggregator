@@ -1,36 +1,54 @@
-# build: docker buildx build --platform linux/amd64 -f Dockerfile -t wzdnzd/aggregator:tag --build-arg PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple" .
+# Aggregator 多架构 docker 镜像
+# 构建：docker buildx build --platform linux/amd64,linux/arm64 -t <tag> .
+# 或 GitHub Actions: docker/build-push-action@v5 + platforms
 
-FROM python:3.12.3-slim
+FROM python:3.12-slim
 
 LABEL maintainer="wzdnzd"
+LABEL org.opencontainers.image.source="https://github.com/wzdnzd/aggregator"
 
-# github personal access token
-ENV GIST_PAT=""
+ARG TARGETARCH
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
-# github gist info, format: username/gist_id
-ENV GIST_LINK=""
-
-# customize airport listing url address
-ENV CUSTOMIZE_LINK=""
-
-# pip default index url
-ARG PIP_INDEX_URL="https://pypi.org/simple"
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/aggregator:${PATH}"
 
 WORKDIR /aggregator
 
-# copy files, only linux related files are needed
-COPY requirements.txt /aggregator
-COPY subscribe /aggregator/subscribe 
-COPY clash/clash-linux-amd clash/Country.mmdb /aggregator/clash
+# 1. 依赖先行（缓存优化）
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -i "${PIP_INDEX_URL}" -r requirements.txt
 
-COPY subconverter /aggregator/subconverter
-RUN rm -rf subconverter/subconverter-darwin-amd \
-    && rm -rf subconverter/subconverter-darwin-arm \
-    && rm -rf subconverter/subconverter-linux-arm \
-    && rm -rf subconverter/subconverter-windows.exe
+# 2. 项目源码
+COPY subscribe/ ./subscribe/
 
-# install dependencies
-RUN pip install -i ${PIP_INDEX_URL} --no-cache-dir -r requirements.txt
+# 3. checkin 脚本（独立路径，无 subscribe 依赖）
+COPY .github/actions/checkin/ ./.github/actions/checkin/
 
-# start and run
-CMD ["python", "-u", "subscribe/collect.py", "--all", "--overwrite", "--skip"]
+# 4. clash 二进制 + GeoIP 数据库
+COPY clash/ ./clash/
+
+# 5. subconverter 二进制 + 配置 + 规则
+COPY subconverter/ ./subconverter/
+
+# 6. 统一入口
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# 7. 架构分支：删除不匹配的二进制（保留 Country.mmdb 与所有 subconverter 配置/规则）
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) \
+            rm -f clash/clash-darwin-amd clash/clash-darwin-arm clash/clash-linux-arm clash/clash-windows-amd.exe \
+                  subconverter/subconverter-darwin-amd subconverter/subconverter-darwin-arm subconverter/subconverter-linux-arm subconverter/subconverter-windows-amd.exe; \
+            ;; \
+        arm64) \
+            rm -f clash/clash-darwin-amd clash/clash-darwin-arm clash/clash-linux-amd clash/clash-windows-amd.exe \
+                  subconverter/subconverter-darwin-amd subconverter/subconverter-darwin-arm subconverter/subconverter-linux-amd subconverter/subconverter-windows-amd.exe; \
+            ;; \
+        *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["collect", "--all", "--overwrite", "--skip"]
