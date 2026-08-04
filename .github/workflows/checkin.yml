@@ -8,18 +8,15 @@ jobs:
   sync_with_upstream:
     runs-on: ubuntu-latest
     name: Auto Checkin for Traffic
+    container:
+      image: ghcr.io/wzdnzd/aggregator:latest
+      options: --privileged
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: main
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-          architecture: "x64"
 
       - name: Fetch checkin config from Gist
         env:
@@ -33,15 +30,15 @@ jobs:
           USER=$(echo "$GIST_LINK" | cut -d/ -f1)
           ID=$(echo "$GIST_LINK" | cut -d/ -f2)
           if curl -fsSL "https://gist.githubusercontent.com/${USER}/${ID}/raw/checkin-config.json" \
-               -o .github/actions/checkin/config.json; then
-            echo "Fetched checkin config from Gist ($(wc -c < .github/actions/checkin/config.json) bytes)"
+               -o /aggregator/.github/actions/checkin/config.json; then
+            echo "Fetched checkin config from Gist ($(wc -c < /aggregator/.github/actions/checkin/config.json) bytes)"
           else
-            echo "No checkin config in Gist yet, keeping repo placeholder"
+            echo "No checkin config in Gist yet, keeping image-bundled placeholder"
           fi
 
       - name: Run Checkin Script
         run: |
-          python ./.github/actions/checkin/universal.py || echo "Checkin script failed"
+          /entrypoint.sh checkin || echo "Checkin script failed"
 
       - name: Record Timestamp
         run: date "+%Y-%m-%d %H:%M:%S"
