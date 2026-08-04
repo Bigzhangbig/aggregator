@@ -1,0 +1,34 @@
+# 本地开发用 docker-compose
+#
+# 用法：
+#   export GIST_PAT=... GIST_LINK=user/id    # 必填 secrets
+#   docker compose run --rm aggregator                     # 默认 collect --all --overwrite --skip
+#   docker compose run --rm aggregator process --overwrite # 跑 process.py
+#   docker compose run --rm aggregator checkin             # 跑 checkin
+#
+# 镜像自带 Python + 依赖 + clash/subconverter 二进制；
+# 工作目录 /work/subscribe 挂载本地代码，热改热跑，无需 rebuild。
+
+services:
+  aggregator:
+    image: ghcr.io/wzdnzd/aggregator:latest
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    working_dir: /work/subscribe
+    volumes:
+      - ./:/work
+      - ./data:/aggregator/data
+    environment:
+      TZ: Asia/Shanghai
+      GIST_PAT: ${GIST_PAT:-}
+      GIST_LINK: ${GIST_LINK:-}
+      CUSTOMIZE_LINK: ${CUSTOMIZE_LINK:-}
+      SUBSCRIBE_CONF: ${SUBSCRIBE_CONF:-}
+      PUSH_TOKEN: ${PUSH_TOKEN:-}
+      REACHABLE: ${REACHABLE:-true}
+      SKIP_ALIVE_CHECK: ${SKIP_ALIVE_CHECK:-false}
+      SKIP_REMARK: ${SKIP_REMARK:-false}
+      ENABLE_SPECIAL_PROTOCOLS: ${ENABLE_SPECIAL_PROTOCOLS:-false}
+      LOCAL_BASEDIR: /work/data
+    command: ["python", "-u", "collect.py", "--all", "--overwrite", "--skip"]
