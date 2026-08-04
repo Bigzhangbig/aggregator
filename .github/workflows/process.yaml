@@ -33,6 +33,9 @@ env:
 jobs:
   process:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/wzdnzd/aggregator:latest
+      options: --privileged
 
     steps:
       - name: Checkout
@@ -40,18 +43,8 @@ jobs:
         with:
           ref: main
 
-      - name: Prepare
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-          architecture: "x64"
-          cache: "pip"
-
-      - name: Install
-        run: pip3 install -r requirements.txt
-
       - name: Process
-        run: python -u subscribe/process.py --overwrite
+        run: /entrypoint.sh process --overwrite
 
       - name: Timestamp
         run: date
