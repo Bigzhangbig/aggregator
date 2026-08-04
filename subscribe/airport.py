@@ -276,6 +276,10 @@ class AirPort:
             logger.info(f"achieved max retry when register, domain: {self.ref}")
             return "", ""
 
+        # 清空上次注册的凭据（防止失败时旧凭据残留，被外层新代码误用）
+        self.username = ""
+        self.password = ""
+
         if not password:
             password = utils.random_chars(random.randint(8, 16), punctuation=True)
 
