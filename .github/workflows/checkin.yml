@@ -21,19 +21,41 @@ jobs:
       - name: Fetch checkin config from Gist
         env:
           GIST_LINK: ${{ secrets.GIST_LINK }}
+          GIST_PAT: ${{ secrets.GIST_PAT }}
         continue-on-error: true
         run: |
           if [ -z "$GIST_LINK" ]; then
-            echo "GIST_LINK not set, skipping fetch (using repo placeholder)"
+            echo "GIST_LINK not set, skipping fetch (using image placeholder)"
             exit 0
           fi
+
+          # 严格校验 username/gist_id 格式
+          LINK_PARTS=$(echo "$GIST_LINK" | awk -F'/' 'NF==2 && $1!="" && $2!=""')
+          if [ -z "$LINK_PARTS" ]; then
+            echo "Error: GIST_LINK invalid, expected 'username/gist_id' format"
+            exit 1
+          fi
+
           USER=$(echo "$GIST_LINK" | cut -d/ -f1)
           ID=$(echo "$GIST_LINK" | cut -d/ -f2)
-          if curl -fsSL "https://gist.githubusercontent.com/${USER}/${ID}/raw/checkin-config.json" \
-               -o /aggregator/.github/actions/checkin/config.json; then
+
+          # 用 GitHub API + PAT 读 private Gist（公开 raw URL 对 private Gist 返回 404）
+          if [ -z "$GIST_PAT" ]; then
+            echo "GIST_PAT not set, cannot read private Gist"
+            exit 1
+          fi
+
+          CONTENT=$(curl -fsSL \
+            -H "Authorization: Bearer ${GIST_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/gists/${ID}" \
+            | jq -r '.files["checkin-config.json"].content // empty')
+
+          if [ -n "$CONTENT" ]; then
+            echo "$CONTENT" > /aggregator/.github/actions/checkin/config.json
             echo "Fetched checkin config from Gist ($(wc -c < /aggregator/.github/actions/checkin/config.json) bytes)"
           else
-            echo "No checkin config in Gist yet, keeping image-bundled placeholder"
+            echo "No checkin-config.json in Gist yet, keeping image placeholder"
           fi
 
       - name: Run Checkin Script
