@@ -210,11 +210,9 @@ def _collect_checkin_entries(tasks: list) -> list:
         if getattr(t, "sub", ""):
             # 已有订阅（人工维护 / refresh 复用），不视为新注册
             continue
-        domain = utils.trim(getattr(t, "domain", ""))
+        domain = _norm_domain(getattr(t, "domain", ""))
         if not domain:
             continue
-        if not domain.startswith("http"):
-            domain = f"https://{domain}"
         entries.append(
             {
                 "domain": domain,
@@ -229,21 +227,44 @@ def _collect_checkin_entries(tasks: list) -> list:
     return entries
 
 
-def _load_existing_checkin(username: str, gist_id: str, filename: str) -> dict:
-    """从 Gist 拉取已有 checkin-config.json（公开访问即可），返回 domain -> entry 的字典。
+def _norm_domain(d: str) -> str:
+    """规范化 domain key：trim + 强制 https:// 前缀（与 universal.py 期望的 domain 格式一致）。"""
+    d = utils.trim(d)
+    if not d:
+        return ""
+    if not d.startswith("http"):
+        d = f"https://{d}"
+    return d
+
+
+def _load_existing_checkin(username: str, gist_id: str, filename: str, token: str = "") -> dict:
+    """从 Gist 拉取已有 checkin-config.json，通过 GitHub API（PAT 认证）而非公开 raw URL。
+
+    PushToGist 默认创建 private Gist，公开 raw URL 返回 404 会导致凭据丢失（merge 从空开始）。
+    必须用 api.github.com/gists/{id} + Bearer token 才能读 private Gist 内容。
 
     拉取失败或解析失败返回空 dict（视为首次推送）。
     """
-    if not username or not gist_id:
+    if not gist_id:
         return {}
-    url = f"https://gist.githubusercontent.com/{username}/{gist_id}/raw/{filename}"
+    headers = {"Accept": "application/vnd.github+json"}
+    token = utils.trim(token) or utils.trim(os.environ.get("GIST_PAT", ""))
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    url = f"https://api.github.com/gists/{gist_id}"
     try:
-        content = utils.http_get(url=url)
+        content = utils.http_get(url=url, headers=headers)
         if not content or not content.strip().startswith("{"):
             return {}
         data = json.loads(content)
-        entries = data.get("domains", []) or []
-        return {utils.trim(e.get("domain", "")): e for e in entries if isinstance(e, dict) and e.get("domain")}
+        files = data.get("files", {}) or {}
+        target = files.get(filename, {}) or {}
+        raw = target.get("content", "") or target.get("truncated_content", "") or ""
+        if not raw.strip().startswith("{"):
+            return {}
+        payload = json.loads(raw)
+        entries = payload.get("domains", []) or []
+        return {_norm_domain(e.get("domain", "")): e for e in entries if isinstance(e, dict) and e.get("domain")}
     except:
         return {}
 
@@ -453,7 +474,12 @@ def aggregate(args: argparse.Namespace) -> None:
         checkin_filename = "checkin-config.json"
         checkin_entries = _collect_checkin_entries(tasks=tasks)
         if checkin_entries:
-            merged = _load_existing_checkin(username=username, gist_id=gist_id, filename=checkin_filename)
+            merged = _load_existing_checkin(
+                username=username,
+                gist_id=gist_id,
+                filename=checkin_filename,
+                token=access_token,
+            )
             for entry in checkin_entries:
                 merged[entry["domain"]] = entry
             files[checkin_filename] = {
