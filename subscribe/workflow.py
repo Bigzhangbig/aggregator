@@ -82,6 +82,10 @@ class TaskConfig:
     # 接口地址前缀，如 /api/v1/ 或 /api?scheme=
     api_prefix: str = "/api/v1/"
 
+    # 注册成功后回填的账号凭据（仅 collect.py 注册新机场时写入，process.py 不使用）
+    email: str = ""
+    passwd: str = ""
+
 
 def execute(task_conf: TaskConfig) -> list:
     if not task_conf or not isinstance(task_conf, TaskConfig):
