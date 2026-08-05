@@ -226,14 +226,27 @@ def _collect_checkin_entries(tasks: list) -> list:
         domain = _norm_domain(getattr(t, "domain", ""))
         if not domain:
             continue
+        api_prefix = utils.trim(getattr(t, "api_prefix", ""))
+        if api_prefix:
+            # V2Board: api_prefix=/api/v1/ 或 /api?scheme=
+            login_path = f"{api_prefix}passport/auth/login"
+            checkin_path = f"{api_prefix}user/checkin"
+            checkin_type = "v2board"
+        else:
+            # SSPanel
+            login_path = "/auth/login"
+            checkin_path = "/user/checkin"
+            checkin_type = "sspanel"
+
         entries.append(
             {
                 "domain": domain,
                 "param": {
                     "email": t.email,
                     "passwd": t.passwd,
-                    "login": "/auth/login",
-                    "checkin": "/user/checkin",
+                    "login": login_path,
+                    "checkin": checkin_path,
+                    "type": checkin_type,
                 },
             }
         )

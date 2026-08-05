@@ -35,7 +35,7 @@ PATH = os.path.abspath(os.path.dirname(__file__))
 
 def extract_domain(url) -> str:
     if not url or not re.match(
-        "^(https?:\/\/(([a-zA-Z0-9]+-?)+\.)+[a-zA-Z]+)(:\d+)?(\/.*)?(\?.*)?(#.*)?$", url
+        r"^(https?://(([a-zA-Z0-9]+-?)+\.)+[a-zA-Z]+)(:\d+)?(/.*)?(\?.*)?(#.*)?$", url
     ):
         return ""
 
@@ -95,6 +95,49 @@ def checkin(url, headers, retry) -> None:
         print("[CheckInError] URL: {}".format(extract_domain(url)))
 
 
+def login_v2board(url, params, headers, retry) -> tuple:
+    """V2Board: POST /api/v1/passport/auth/login -> {"data":{"token","auth_data"}} + Set-Cookie"""
+    try:
+        data = urllib.parse.urlencode(params).encode(encoding="UTF8")
+        request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        response = urllib.request.urlopen(request, timeout=10, context=CTX)
+        if response.getcode() == 200:
+            body = json.loads(response.read().decode("unicode_escape"))
+            data_dict = body.get("data", {})
+            token = ""
+            if isinstance(data_dict, dict):
+                token = data_dict.get("auth_data") or data_dict.get("token", "")
+            cookie = response.getheader("Set-Cookie") or ""
+            if token or cookie:
+                return token, cookie
+        return "", ""
+    except Exception as e:
+        print(str(e))
+        retry -= 1
+        if retry > 0:
+            return login_v2board(url, params, headers, retry)
+        print("[LoginError] URL: {}".format(extract_domain(url)))
+        return "", ""
+
+
+def checkin_v2board(url, headers, token, retry) -> None:
+    """V2Board: POST /api/v1/user/checkin with Authorization: Bearer <token>"""
+    try:
+        if token:
+            headers["Authorization"] = "Bearer {}".format(token)
+        request = urllib.request.Request(url, headers=headers, method="POST")
+        response = urllib.request.urlopen(request, timeout=10, context=CTX)
+        data = response.read().decode("unicode_escape")
+        print("[CheckInFinished] URL: {}\t\tResult:{}".format(extract_domain(url), data))
+    except Exception as e:
+        print(str(e))
+        retry -= 1
+        if retry > 0:
+            checkin_v2board(url, headers, token, retry)
+        else:
+            print("[CheckInError] URL: {}".format(extract_domain(url)))
+
+
 def get_cookie(text) -> str:
     regex = "(__cfduid|uid|email|key|ip|expire_in)=(.+?);"
     if not text:
@@ -120,26 +163,40 @@ def flow(domain, params, headers) -> bool:
         print("cannot checkin because domain is invalidate")
         return False
 
-    print("start to checkin, domain: {}".format(domain))
-    login_url = domain + params.get("login", "/auth/login")
-    checkin_url = domain + params.get("checkin", "/user/checkin")
+    login_path = params.get("login", "/auth/login")
+    checkin_path = params.get("checkin", "/user/checkin")
+    checkin_type = params.get("type", "")
+
+    # 无 type 自动检测（兼容旧配置：login 路径含 /api/v1/ 或 /api?scheme= 视为 v2board）
+    if not checkin_type:
+        checkin_type = "v2board" if "/api/v1/" in login_path or "/api?scheme=" in login_path else "sspanel"
+
+    print("start to checkin, domain: {}\ttype: {}".format(domain, checkin_type))
+    login_url = domain + login_path
+    checkin_url = domain + checkin_path
     headers["origin"] = domain
     headers["referer"] = login_url
 
     user_info = {"email": params.get("email", ""), "passwd": params.get("passwd", "")}
 
-    text = login(login_url, user_info, headers, 3)
-    if not text:
-        return False
+    if checkin_type == "v2board":
+        token, cookie = login_v2board(login_url, user_info, headers, 3)
+        if not token and not cookie:
+            return False
+        if cookie:
+            headers["cookie"] = cookie
+        checkin_v2board(checkin_url, headers, token, 3)
+    else:
+        text = login(login_url, user_info, headers, 3)
+        if not text:
+            return False
+        cookie = get_cookie(text)
+        if len(cookie) <= 0:
+            return False
+        headers["referer"] = domain + "/user"
+        headers["cookie"] = cookie
+        checkin(checkin_url, headers, 3)
 
-    cookie = get_cookie(text)
-    if len(cookie) <= 0:
-        return False
-
-    headers["referer"] = domain + "/user"
-    headers["cookie"] = cookie
-
-    checkin(checkin_url, headers, 3)
     return True
 
 

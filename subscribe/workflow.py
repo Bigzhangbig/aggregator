@@ -126,6 +126,7 @@ def execute(task_conf: TaskConfig) -> list:
     # 回填注册成功的账号凭据（供 collect.py 收集后推给 checkin）
     task_conf.email = obj.username
     task_conf.passwd = obj.password
+    task_conf.api_prefix = obj.api_prefix
 
     proxies = obj.parse(
         cookie=cookie,
