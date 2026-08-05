@@ -57,14 +57,27 @@ def assign(
                 if items:
                     subscriptions.update(items)
 
-        if username and gist_id and access_token:
-            push_tool = push.PushToGist(token=access_token)
-            url = push_tool.raw_url(config={"username": username, "gistid": gist_id, "filename": filename})
-
-            content = utils.http_get(url=url, timeout=30)
-            items = re.findall(pattern, content, flags=re.M)
-            if items:
-                subscriptions.update(items)
+        if gist_id and access_token:
+            # 用 GitHub API + PAT 读 private Gist（公开 raw URL 对 private Gist 返回 404）
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {access_token}",
+            }
+            try:
+                resp = utils.http_get(
+                    url=f"https://api.github.com/gists/{gist_id}",
+                    headers=headers,
+                    timeout=30,
+                )
+                if resp and resp.strip().startswith("{"):
+                    data = json.loads(resp)
+                    target = (data.get("files", {}) or {}).get(filename, {}) or {}
+                    content = target.get("content", "") or ""
+                    items = re.findall(pattern, content, flags=re.M)
+                    if items:
+                        subscriptions.update(items)
+            except Exception as e:
+                logger.debug(f"[LoadExist] Gist API read failed for {filename}: {e}")
 
         logger.info("start checking whether existing subscriptions have expired")
 
