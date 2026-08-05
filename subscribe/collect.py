@@ -213,7 +213,8 @@ def assign(
 def _collect_checkin_entries(tasks: list) -> list:
     """从 tasks 中收集本次新注册机场的凭据，转换为 checkin universal.py 期望的 entry 格式。
 
-    仅收集 domain 注册（非已有 sub）且凭据非空的 task。同一机场多次出现由 domain-keyed 字典去重。
+    仅收集 domain 注册（非已有 sub）且凭据非空的 task。
+    去重由调用方 aggregate() 的 domain-keyed merge 字典完成，本函数不做去重。
     """
     entries = []
     for t in tasks or []:
