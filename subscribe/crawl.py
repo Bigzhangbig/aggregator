@@ -1255,6 +1255,7 @@ def check_status(
     spare_time: float = 0,
     tolerance: float = 0,
     connectable: bool = True,
+    cookie: str = "",
 ) -> tuple[bool, bool]:
     """
     url: subscription link
@@ -1273,6 +1274,8 @@ def check_status(
 
     try:
         headers = {"User-Agent": f"{utils.USER_AGENT}; Clash.Meta; Mihomo; Shadowrocket;"}
+        if cookie:
+            headers["cookie"] = cookie
         request = urllib.request.Request(url=url, headers=headers)
         response = urllib.request.urlopen(request, timeout=10, context=utils.CTX)
         if response.getcode() != 200:
@@ -1316,6 +1319,23 @@ def check_status(
 
         expired = e.code == 404 or "token is error" in message
         if not expired and e.code in [403, 503]:
+            # Patchright 降级：过 Cloudflare 盾拿 Cookie，带 Cookie 重试一次
+            if not cookie:
+                try:
+                    from patchright_driver import solve_challenge
+                    result = solve_challenge(url)
+                    if result.get("success") and result.get("cookie"):
+                        return check_status(
+                            url=url,
+                            retry=retry,
+                            remain=remain,
+                            spare_time=spare_time,
+                            tolerance=tolerance,
+                            connectable=connectable,
+                            cookie=result["cookie"],
+                        )
+                except Exception as e2:
+                    logger.warning(f"patchright solve failed for {url}: {e2}")
             return check_status(
                 url=url,
                 retry=retry - 1,
@@ -1857,6 +1877,17 @@ def validate_domain(url: str, rigid: bool = True, chuck: bool = False) -> tuple[
 
         rr = airport.AirPort.get_register_require(domain=url)
         flag = rr.invite or (chuck and rr.recaptcha) or (rigid and rr.whitelist and rr.verify)
+
+        # Patchright 可用时，不因 recaptcha 跳过（注册时用 Patchright 过 Turnstile）
+        if flag and chuck and rr.recaptcha:
+            try:
+                from patchright_driver import async_playwright as _pw
+                if _pw is not None:
+                    flag = False
+                    logger.info(f"[Patchright] recaptcha domain not skipped: {url}")
+            except ImportError:
+                pass
+
         return not flag, rr.api_prefix
     except:
         return False, ""

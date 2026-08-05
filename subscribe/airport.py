@@ -441,13 +441,38 @@ class AirPort:
         )
 
         # 需要邀请码或者强制验证
-        if (
+        skip = (
             (rr.invite and not invite_code)
             or (chuck and rr.recaptcha)
             or (rr.whitelist and rr.verify and (rigid or "gmail.com" not in rr.whitelist))
-        ):
+        )
+
+        # Patchright 可用时，不因 recaptcha 跳过（注册时用 Patchright 过 Turnstile）
+        if skip and chuck and rr.recaptcha:
+            try:
+                from patchright_driver import async_playwright as _pw
+                if _pw is not None:
+                    skip = False
+                    logger.info(f"[Patchright] recaptcha not skipped, will try register: {self.ref}")
+            except ImportError:
+                pass
+
+        if skip:
             self.available = False
             return "", ""
+
+        # Patchright 可用时，recaptcha 域名先过 Turnstile/5s 盾拿 Cookie，供 register 使用
+        if chuck and rr.recaptcha:
+            try:
+                from patchright_driver import solve_challenge
+                result = solve_challenge(self.ref)
+                if result.get("success") and result.get("cookie"):
+                    self.headers["cookie"] = result["cookie"]
+                    logger.info(f"[Patchright] got cookie for recaptcha domain: {self.ref}")
+                else:
+                    logger.warning(f"[Patchright] no cookie for {self.ref}: {result.get('error')}")
+            except Exception as e:
+                logger.warning(f"[Patchright] failed to get cookie for {self.ref}: {e}")
 
         # API地址前缀
         self.api_prefix = rr.api_prefix or self.api_prefix

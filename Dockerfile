@@ -24,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends jq curl \
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -i "${PIP_INDEX_URL}" -r requirements.txt
 
+# 3. Chromium 二进制 + 系统依赖（patchright 人机验证绕过需要，详见 docs/PATCHRIGHT_INTEGRATION_PLAN.md）
+#    失败不阻断构建：arm64 或资源不足时降级为无求解能力，其他功能不受影响
+RUN patchright install chromium --with-deps || echo "[WARN] patchright chromium install failed, challenge solving disabled"
+
 # 2. 项目源码
 COPY subscribe/ ./subscribe/
 
