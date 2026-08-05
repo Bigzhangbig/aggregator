@@ -457,10 +457,11 @@ def aggregate(args: argparse.Namespace) -> None:
         # 过滤出新的订阅并检查剩余流量和过期时间是否满足要求
         new_subscriptions = [x for x in urls if x not in old_subscriptions]
 
-        tasks = [[x, 2, traffic, life, 0, True] for x in new_subscriptions]
+        # 注意：此处不能覆盖 tasks 变量（原始 TaskConfig 列表），否则后面 _collect_checkin_entries 拿到的是 list of lists
+        check_tasks = [[x, 2, traffic, life, 0, True] for x in new_subscriptions]
         results = utils.multi_thread_run(
             func=crawl.check_status,
-            tasks=tasks,
+            tasks=check_tasks,
             num_threads=args.num,
             show_progress=display,
         )
@@ -469,7 +470,7 @@ def aggregate(args: argparse.Namespace) -> None:
 
         # 筛选出为符合要求的订阅
         urls = [new_subscriptions[i] for i in range(len(new_subscriptions)) if results[i][0] and not results[i][1]]
-        discard = len(tasks) - len(urls)
+        discard = len(check_tasks) - len(urls)
 
         # 合并新老订阅
         urls.extend(list(old_subscriptions))
