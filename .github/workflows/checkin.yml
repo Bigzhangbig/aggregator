@@ -10,7 +10,6 @@ jobs:
     name: Auto Checkin for Traffic
     container:
       image: ghcr.io/wzdnzd/aggregator:latest
-      options: --privileged
 
     steps:
       - name: Checkout
