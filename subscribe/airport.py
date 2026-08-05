@@ -139,6 +139,27 @@ def issspanel(domain: str) -> bool:
     )
 
 
+def isproxypanel(domain: str) -> bool:
+    """检测是否为 ProxyPanel 面板。
+
+    ProxyPanel 登录端点 /api/v1/login（区别于 V2Board 的 /api/v1/passport/auth/login）。
+    GET 嗅探返回 200 视为 ProxyPanel。
+    """
+
+    def sniff(url: str) -> int:
+        if utils.isblank(url):
+            return -1
+        try:
+            opener = urllib.request.build_opener(NoRedirHandler)
+            opener.addheaders = [("User-Agent", utils.USER_AGENT)]
+            response = opener.open(fullurl=url, timeout=10)
+            return response.getcode()
+        except Exception:
+            return -2
+
+    return sniff(url=f"{domain}/api/v1/login") == 200
+
+
 class AirPort:
     def __init__(
         self,

@@ -226,17 +226,23 @@ def _collect_checkin_entries(tasks: list) -> list:
         domain = _norm_domain(getattr(t, "domain", ""))
         if not domain:
             continue
-        api_prefix = utils.trim(getattr(t, "api_prefix", ""))
-        if api_prefix:
-            # V2Board: api_prefix=/api/v1/ 或 /api?scheme=
-            login_path = f"{api_prefix}passport/auth/login"
-            checkin_path = f"{api_prefix}user/checkin"
-            checkin_type = "v2board"
-        else:
-            # SSPanel
+        panel_type = utils.trim(getattr(t, "panel_type", ""))
+        if panel_type == "proxypanel":
+            # ProxyPanel: /api/v1/login + /api/v1/doCheckIn（Bearer Token）
+            login_path = "/api/v1/login"
+            checkin_path = "/api/v1/doCheckIn"
+            checkin_type = "proxypanel"
+        elif panel_type == "sspanel" or (not panel_type and not utils.trim(getattr(t, "api_prefix", ""))):
+            # SSPanel: /auth/login + /user/checkin（Cookie）
             login_path = "/auth/login"
             checkin_path = "/user/checkin"
             checkin_type = "sspanel"
+        else:
+            # V2Board: {api_prefix}passport/auth/login + {api_prefix}user/checkin（Bearer）
+            api_prefix = utils.trim(getattr(t, "api_prefix", "")) or "/api/v1/"
+            login_path = f"{api_prefix}passport/auth/login"
+            checkin_path = f"{api_prefix}user/checkin"
+            checkin_type = "v2board"
 
         entries.append(
             {

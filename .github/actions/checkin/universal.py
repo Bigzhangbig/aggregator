@@ -121,7 +121,12 @@ def login_v2board(url, params, headers, retry) -> tuple:
 
 
 def checkin_v2board(url, headers, token, retry) -> None:
-    """V2Board: POST /api/v1/user/checkin with Authorization: Bearer <token>"""
+    """V2Board: POST /api/v1/user/checkin with Authorization: Bearer <token>
+
+    注意：V2Board/Xboard 原版无签到功能（源码确认 PassportRoute/UserRoute），
+    此分支兼容第三方签到插件，预期大部分 V2Board 机场会 404。
+    有签到的面板见 SSPanel(/user/checkin) 和 ProxyPanel(/api/v1/doCheckIn) 分支。
+    """
     try:
         if token:
             headers["Authorization"] = "Bearer {}".format(token)
@@ -134,6 +139,42 @@ def checkin_v2board(url, headers, token, retry) -> None:
         retry -= 1
         if retry > 0:
             checkin_v2board(url, headers, token, retry)
+        else:
+            print("[CheckInError] URL: {}".format(extract_domain(url)))
+
+
+def login_proxypanel(url, params, headers, retry) -> str:
+    """ProxyPanel: POST /api/v1/login -> {data:{token}}（Laravel Sanctum Bearer）"""
+    try:
+        data = urllib.parse.urlencode(params).encode(encoding="UTF8")
+        request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        response = urllib.request.urlopen(request, timeout=10, context=CTX)
+        if response.getcode() == 200:
+            body = json.loads(response.read().decode("unicode_escape"))
+            return body.get("data", {}).get("token", "")
+        return ""
+    except Exception as e:
+        print(str(e))
+        retry -= 1
+        if retry > 0:
+            return login_proxypanel(url, params, headers, retry)
+        print("[LoginError] URL: {}".format(extract_domain(url)))
+        return ""
+
+
+def checkin_proxypanel(url, headers, token, retry) -> None:
+    """ProxyPanel: POST /api/v1/doCheckIn with Authorization: Bearer <token>"""
+    try:
+        headers["Authorization"] = "Bearer {}".format(token)
+        request = urllib.request.Request(url, headers=headers, method="POST")
+        response = urllib.request.urlopen(request, timeout=10, context=CTX)
+        data = response.read().decode("unicode_escape")
+        print("[CheckInFinished] URL: {}\t\tResult:{}".format(extract_domain(url), data))
+    except Exception as e:
+        print(str(e))
+        retry -= 1
+        if retry > 0:
+            checkin_proxypanel(url, headers, token, retry)
         else:
             print("[CheckInError] URL: {}".format(extract_domain(url)))
 
@@ -167,9 +208,14 @@ def flow(domain, params, headers) -> bool:
     checkin_path = params.get("checkin", "/user/checkin")
     checkin_type = params.get("type", "")
 
-    # 无 type 自动检测（兼容旧配置：login 路径含 /api/v1/ 或 /api?scheme= 视为 v2board）
+    # 无 type 自动检测（兼容旧配置）
     if not checkin_type:
-        checkin_type = "v2board" if "/api/v1/" in login_path or "/api?scheme=" in login_path else "sspanel"
+        if login_path == "/api/v1/login" or login_path.endswith("/doCheckIn"):
+            checkin_type = "proxypanel"
+        elif "/api/v1/" in login_path or "/api?scheme=" in login_path:
+            checkin_type = "v2board"
+        else:
+            checkin_type = "sspanel"
 
     print("start to checkin, domain: {}\ttype: {}".format(domain, checkin_type))
     login_url = domain + login_path
@@ -177,7 +223,7 @@ def flow(domain, params, headers) -> bool:
     headers["origin"] = domain
     headers["referer"] = login_url
 
-    if checkin_type == "v2board":
+    if checkin_type in ("v2board", "proxypanel"):
         user_info = {"email": params.get("email", ""), "password": params.get("passwd", "")}
     else:
         user_info = {"email": params.get("email", ""), "passwd": params.get("passwd", "")}
@@ -189,6 +235,11 @@ def flow(domain, params, headers) -> bool:
         if cookie:
             headers["cookie"] = cookie
         checkin_v2board(checkin_url, headers, token, 3)
+    elif checkin_type == "proxypanel":
+        token = login_proxypanel(login_url, user_info, headers, 3)
+        if not token:
+            return False
+        checkin_proxypanel(checkin_url, headers, token, 3)
     else:
         text = login(login_url, user_info, headers, 3)
         if not text:

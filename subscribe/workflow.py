@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import renewal
 import utils
-from airport import ANOTHER_API_PREFIX, AirPort
+from airport import ANOTHER_API_PREFIX, AirPort, isproxypanel, issspanel
 from logger import logger
 from origin import Origin
 from push import PushTo
@@ -86,6 +86,9 @@ class TaskConfig:
     email: str = ""
     passwd: str = ""
 
+    # 面板类型（execute 回填：sspanel/v2board/proxypanel，供 _collect_checkin_entries 生成签到路径）
+    panel_type: str = ""
+
 
 def execute(task_conf: TaskConfig) -> list:
     if not task_conf or not isinstance(task_conf, TaskConfig):
@@ -116,17 +119,54 @@ def execute(task_conf: TaskConfig) -> list:
             obj.registed = True
             obj.sub = sub_url
 
-    cookie, authorization = obj.get_subscribe(
-        retry=task_conf.retry,
-        rigid=task_conf.rigid,
-        chuck=task_conf.chuck,
-        invite_code=task_conf.invite_code,
-    )
+    if issspanel(task_conf.domain):
+        # SSPanel 注册：走 scaner.getsub（/auth/register -> /auth/login -> 订阅链接）
+        # AirPort 类只支持 V2Board 路径，SSPanel 需走 scaner 旁路
+        email = utils.random_chars(length=8, punctuation=False) + "@gmail.com"
+        passwd = utils.random_chars(length=10, punctuation=True)
+        from scripts.scaner import getsub
 
-    # 回填注册成功的账号凭据（供 collect.py 收集后推给 checkin）
-    task_conf.email = obj.username
-    task_conf.passwd = obj.password
-    task_conf.api_prefix = obj.api_prefix
+        suburl = getsub(domain=task_conf.domain, email=email, passwd=passwd)
+        if suburl:
+            obj.sub = f"{suburl}?sub=1&extend=1"
+            obj.username = email
+            obj.password = passwd
+            obj.registed = True
+        task_conf.email = email
+        task_conf.passwd = passwd
+        task_conf.api_prefix = ""  # SSPanel 无 api_prefix
+        task_conf.panel_type = "sspanel"
+        cookie, authorization = "", ""
+    elif isproxypanel(task_conf.domain):
+        # ProxyPanel 注册：走 scaner.getsub_proxypanel（/api/v1/register -> /api/v1/login -> /api/v1/getUserInfo）
+        email = utils.random_chars(length=8, punctuation=False) + "@gmail.com"
+        passwd = utils.random_chars(length=10, punctuation=True)
+        from scripts.scaner import getsub_proxypanel
+
+        suburl = getsub_proxypanel(domain=task_conf.domain, email=email, passwd=passwd)
+        if suburl:
+            obj.sub = suburl
+            obj.username = email
+            obj.password = passwd
+            obj.registed = True
+        task_conf.email = email
+        task_conf.passwd = passwd
+        task_conf.api_prefix = "/api/v1/"  # ProxyPanel 用 /api/v1/ 前缀（但端点与 V2Board 不同）
+        task_conf.panel_type = "proxypanel"
+        cookie, authorization = "", ""
+    else:
+        cookie, authorization = obj.get_subscribe(
+            retry=task_conf.retry,
+            rigid=task_conf.rigid,
+            chuck=task_conf.chuck,
+            invite_code=task_conf.invite_code,
+        )
+
+        # 回填注册成功的账号凭据（供 collect.py 收集后推给 checkin）
+        task_conf.email = obj.username
+        task_conf.passwd = obj.password
+        task_conf.api_prefix = obj.api_prefix
+        task_conf.panel_type = "v2board"
 
     proxies = obj.parse(
         cookie=cookie,

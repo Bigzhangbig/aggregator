@@ -285,6 +285,60 @@ def getsub(domain: str, email: str, passwd: str) -> str:
         return ""
 
 
+def getsub_proxypanel(domain: str, email: str, passwd: str) -> str:
+    """ProxyPanel 注册+登录+获取订阅链接（Laravel Sanctum Bearer Token）。
+
+    ProxyPanel 与 V2Board/SSPanel 均不兼容：注册 /api/v1/register（username/nickname），
+    登录 /api/v1/login 返回 {data:{token}}，订阅 /api/v1/getUserInfo 返回 subUrl。
+    """
+    base = utils.extract_domain(url=domain, include_protocal=True) or domain
+    base = base.rstrip("/")
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": utils.USER_AGENT}
+
+    # 1. 注册（失败不阻断，可能已注册）
+    try:
+        params = urllib.parse.urlencode({
+            "username": email,
+            "nickname": email.split("@")[0],
+            "password": passwd,
+            "password_confirmation": passwd,
+        }).encode("UTF8")
+        req = urllib.request.Request(f"{base}/api/v1/register", data=params, headers=headers, method="POST")
+        urllib.request.urlopen(req, timeout=10, context=utils.CTX)
+    except Exception as e:
+        logger.debug(f"[ProxyPanel] register failed (may already registered), domain: {base}, {e}")
+
+    # 2. 登录拿 token
+    try:
+        params = urllib.parse.urlencode({"email": email, "password": passwd}).encode("UTF8")
+        req = urllib.request.Request(f"{base}/api/v1/login", data=params, headers=headers, method="POST")
+        resp = urllib.request.urlopen(req, timeout=10, context=utils.CTX)
+        token = json.loads(resp.read().decode("utf8")).get("data", {}).get("token", "")
+        if not token:
+            logger.error(f"[ProxyPanel] login failed, no token, domain: {base}")
+            return ""
+    except Exception as e:
+        logger.error(f"[ProxyPanel] login error, domain: {base}, {e}")
+        return ""
+
+    # 3. 获取订阅链接
+    try:
+        req = urllib.request.Request(
+            f"{base}/api/v1/getUserInfo",
+            headers={"Authorization": f"Bearer {token}", "User-Agent": utils.USER_AGENT},
+            method="GET",
+        )
+        resp = urllib.request.urlopen(req, timeout=10, context=utils.CTX)
+        sub_url = json.loads(resp.read().decode("utf8")).get("data", {}).get("subUrl", "")
+        if sub_url:
+            return sub_url
+        logger.error(f"[ProxyPanel] no subUrl, domain: {base}")
+        return ""
+    except Exception as e:
+        logger.error(f"[ProxyPanel] getUserInfo error, domain: {base}, {e}")
+        return ""
+
+
 def get_userinfo(domain: str, email: str, passwd: str, subflag: bool, verify: bool = False) -> str:
     if utils.isblank(domain) or utils.isblank(email) or utils.isblank(passwd):
         logger.error(f"[ScanerError] skip scan because found invalidate arguments, domain: {domain}")
