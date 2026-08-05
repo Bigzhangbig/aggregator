@@ -1,8 +1,13 @@
 name: Checkin
 on:
   schedule:
+    # 每日 02:45 UTC（GitHub Actions cron 按 UTC 解析，不受 TZ env 影响）
     - cron: "45 02 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: checkin
+  cancel-in-progress: false
 
 jobs:
   sync_with_upstream:
@@ -12,17 +17,13 @@ jobs:
       image: ghcr.io/wzdnzd/aggregator:latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
       - name: Fetch checkin config from Gist
         env:
           GIST_LINK: ${{ secrets.GIST_LINK }}
           GIST_PAT: ${{ secrets.GIST_PAT }}
         continue-on-error: true
         run: |
+          set -euo pipefail
           if [ -z "$GIST_LINK" ]; then
             echo "GIST_LINK not set, skipping fetch (using image placeholder)"
             exit 0
@@ -35,15 +36,14 @@ jobs:
             exit 1
           fi
 
-          USER=$(echo "$GIST_LINK" | cut -d/ -f1)
           ID=$(echo "$GIST_LINK" | cut -d/ -f2)
 
-          # 用 GitHub API + PAT 读 private Gist（公开 raw URL 对 private Gist 返回 404）
           if [ -z "$GIST_PAT" ]; then
             echo "GIST_PAT not set, cannot read private Gist"
             exit 1
           fi
 
+          # 用 GitHub API + PAT 读 private Gist（公开 raw URL 对 private Gist 返回 404）
           CONTENT=$(curl -fsSL \
             -H "Authorization: Bearer ${GIST_PAT}" \
             -H "Accept: application/vnd.github+json" \
