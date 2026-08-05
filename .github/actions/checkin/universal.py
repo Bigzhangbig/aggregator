@@ -177,11 +177,14 @@ def flow(domain, params, headers) -> bool:
     headers["origin"] = domain
     headers["referer"] = login_url
 
-    user_info = {"email": params.get("email", ""), "passwd": params.get("passwd", "")}
+    if checkin_type == "v2board":
+        user_info = {"email": params.get("email", ""), "password": params.get("passwd", "")}
+    else:
+        user_info = {"email": params.get("email", ""), "passwd": params.get("passwd", "")}
 
     if checkin_type == "v2board":
         token, cookie = login_v2board(login_url, user_info, headers, 3)
-        if not token and not cookie:
+        if not token:
             return False
         if cookie:
             headers["cookie"] = cookie

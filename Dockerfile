@@ -16,17 +16,24 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /aggregator
 
-# 1. 系统依赖：jq + curl（checkin.yml 用 curl 读 Gist API、jq 解析响应，python:3.12-slim 不预装）
-RUN apt-get update && apt-get install -y --no-install-recommends jq curl \
+# 1. 系统依赖：jq + curl + Chromium 运行时依赖（patchright 人机验证绕过需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq curl \
+    libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Python 依赖（缓存优化）
+# 2. Python 依赖（缓存优化，含 patchright）
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -i "${PIP_INDEX_URL}" -r requirements.txt
 
-# 3. Chromium 二进制 + 系统依赖（patchright 人机验证绕过需要，详见 docs/PATCHRIGHT_INTEGRATION_PLAN.md）
-#    失败不阻断构建：arm64 或资源不足时降级为无求解能力，其他功能不受影响
-RUN patchright install chromium --with-deps || echo "[WARN] patchright chromium install failed, challenge solving disabled"
+# 3. Chromium 二进制（patchright 人机验证绕过需要，详见 docs/PATCHRIGHT_INTEGRATION_PLAN.md）
+#    显式装系统依赖（避开 --with-deps 在多架构 Debian 的脆弱路径），失败则构建失败
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p /ms-playwright \
+    && patchright install chromium \
+    || { echo "[ERROR] patchright chromium install failed" >&2; exit 1; }
 
 # 2. 项目源码
 COPY subscribe/ ./subscribe/

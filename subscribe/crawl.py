@@ -1275,7 +1275,7 @@ def check_status(
     try:
         headers = {"User-Agent": f"{utils.USER_AGENT}; Clash.Meta; Mihomo; Shadowrocket;"}
         if cookie:
-            headers["cookie"] = cookie
+            headers["Cookie"] = cookie
         request = urllib.request.Request(url=url, headers=headers)
         response = urllib.request.urlopen(request, timeout=10, context=utils.CTX)
         if response.getcode() != 200:
@@ -1343,6 +1343,7 @@ def check_status(
                 spare_time=spare_time,
                 tolerance=tolerance,
                 connectable=connectable,
+                cookie=cookie,
             )
 
         return False, expired
@@ -1881,8 +1882,8 @@ def validate_domain(url: str, rigid: bool = True, chuck: bool = False) -> tuple[
         # Patchright 可用时，不因 recaptcha 跳过（注册时用 Patchright 过 Turnstile）
         if flag and chuck and rr.recaptcha:
             try:
-                from patchright_driver import async_playwright as _pw
-                if _pw is not None:
+                from patchright_driver import is_available
+                if is_available():
                     flag = False
                     logger.info(f"[Patchright] recaptcha domain not skipped: {url}")
             except ImportError:

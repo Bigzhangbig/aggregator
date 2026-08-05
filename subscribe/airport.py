@@ -448,10 +448,10 @@ class AirPort:
         )
 
         # Patchright 可用时，不因 recaptcha 跳过（注册时用 Patchright 过 Turnstile）
-        if skip and chuck and rr.recaptcha:
+        if skip and chuck and rr.recaptcha and not (rr.invite and not invite_code):
             try:
-                from patchright_driver import async_playwright as _pw
-                if _pw is not None:
+                from patchright_driver import is_available
+                if is_available():
                     skip = False
                     logger.info(f"[Patchright] recaptcha not skipped, will try register: {self.ref}")
             except ImportError:

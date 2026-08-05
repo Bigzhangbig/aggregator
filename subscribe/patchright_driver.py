@@ -11,6 +11,7 @@ Patchright 人机验证求解池。
 """
 
 import asyncio
+import os
 import threading
 
 from logger import logger
@@ -76,7 +77,7 @@ class _PatchrightPool:
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
                 # 留 2.5 秒供 Cloudflare Turnstile / 5s 盾自动完成
-                await asyncio.sleep(2.5)
+                await asyncio.sleep(5)  # 留 5 秒供 Cloudflare 5s 盾 / Turnstile 自动完成
                 cookies = await context.cookies()
                 cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
                 return {
@@ -100,6 +101,11 @@ _pool = None
 _pool_lock = threading.Lock()
 
 
+def is_available() -> bool:
+    """检查 patchright 是否可用（包已安装）。不启动 Chromium，无副作用。"""
+    return async_playwright is not None
+
+
 def solve_challenge(url: str, timeout: int = 25) -> dict:
     """同步接口：供 aggregator 多线程代码调用。
 
@@ -113,7 +119,8 @@ def solve_challenge(url: str, timeout: int = 25) -> dict:
     with _pool_lock:
         if _pool is None:
             try:
-                _pool = _PatchrightPool()
+                max_concurrency = int(os.environ.get("PATCHRIGHT_MAX_CONCURRENCY", "4"))
+                _pool = _PatchrightPool(max_concurrency=max_concurrency)
             except Exception as e:
                 logger.error(f"failed to init patchright pool: {e}")
                 return {"success": False, "error": str(e)}
