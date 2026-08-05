@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Auto Checkin for Traffic
     container:
-      image: ghcr.io/wzdnzd/aggregator:latest
+      image: ghcr.io/bigzhangbig/aggregator:latest
 
     steps:
       - name: Fetch checkin config from Gist
