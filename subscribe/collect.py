@@ -43,7 +43,7 @@ def assign(
     num_threads: int = 0,
     **kwargs,
 ) -> list[TaskConfig]:
-    def load_exist(username: str, gist_id: str, access_token: str, filename: str) -> list[str]:
+    def load_exist(gist_id: str, access_token: str, filename: str) -> list[str]:
         if not filename:
             return []
 
@@ -116,11 +116,10 @@ def assign(
     subscribes_file = utils.trim(kwargs.get("subscribes_file", ""))
     access_token = utils.trim(kwargs.get("access_token", ""))
     gist_id = utils.trim(kwargs.get("gist_id", ""))
-    username = utils.trim(kwargs.get("username", ""))
     chuck = kwargs.get("chuck", False)
 
     # 加载已有订阅
-    subscriptions = load_exist(username, gist_id, access_token, subscribes_file)
+    subscriptions = load_exist(gist_id, access_token, subscribes_file)
     logger.info(f"load exists subscription finished, count: {len(subscriptions)}")
 
     # 是否允许特殊协议
@@ -324,7 +323,6 @@ def aggregate(args: argparse.Namespace) -> None:
         num_threads=args.num,
         refresh=args.refresh,
         chuck=args.chuck,
-        username=username,
         gist_id=gist_id,
         access_token=access_token,
         subscribes_file=subscribes_file,
