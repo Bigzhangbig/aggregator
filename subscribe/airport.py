@@ -467,7 +467,7 @@ class AirPort:
                 from patchright_driver import solve_challenge
                 result = solve_challenge(self.ref)
                 if result.get("success") and result.get("cookie"):
-                    self.headers["cookie"] = result["cookie"]
+                    self.headers["Cookie"] = result["cookie"]
                     logger.info(f"[Patchright] got cookie for recaptcha domain: {self.ref}")
                 else:
                     logger.warning(f"[Patchright] no cookie for {self.ref}: {result.get('error')}")

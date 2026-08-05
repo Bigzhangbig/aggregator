@@ -76,7 +76,7 @@ class _PatchrightPool:
             page = await context.new_page()
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
-                # 留 2.5 秒供 Cloudflare Turnstile / 5s 盾自动完成
+                # 留 5 秒供 Cloudflare 5s 盾 / Turnstile 自动完成
                 await asyncio.sleep(5)  # 留 5 秒供 Cloudflare 5s 盾 / Turnstile 自动完成
                 cookies = await context.cookies()
                 cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
@@ -120,6 +120,9 @@ def solve_challenge(url: str, timeout: int = 25) -> dict:
         if _pool is None:
             try:
                 max_concurrency = int(os.environ.get("PATCHRIGHT_MAX_CONCURRENCY", "4"))
+            except ValueError:
+                max_concurrency = 4
+            try:
                 _pool = _PatchrightPool(max_concurrency=max_concurrency)
             except Exception as e:
                 logger.error(f"failed to init patchright pool: {e}")

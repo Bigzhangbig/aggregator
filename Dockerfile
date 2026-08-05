@@ -2,7 +2,7 @@
 # 构建：docker buildx build --platform linux/amd64,linux/arm64 -t <tag> .
 # 或 GitHub Actions: docker/build-push-action@v5 + platforms
 
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 LABEL maintainer="wzdnzd"
 LABEL org.opencontainers.image.source="https://github.com/wzdnzd/aggregator"
@@ -17,11 +17,13 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /aggregator
 
 # 1. 系统依赖：jq + curl + Chromium 运行时依赖（patchright 人机验证绕过需要）
+#    锁定 bookworm 避免 trixie 的 t64 包名不兼容；完整 chromium 依赖列表
 RUN apt-get update && apt-get install -y --no-install-recommends \
     jq curl \
     libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \
+    libgbm1 libdrm2 libglib2.0-0 libx11-6 libxcb1 \
+    libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Python 依赖（缓存优化，含 patchright）
@@ -29,10 +31,9 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -i "${PIP_INDEX_URL}" -r requirements.txt
 
 # 3. Chromium 二进制（patchright 人机验证绕过需要，详见 docs/PATCHRIGHT_INTEGRATION_PLAN.md）
-#    显式装系统依赖（避开 --with-deps 在多架构 Debian 的脆弱路径），失败则构建失败
+#    显式装系统依赖（避开 --with-deps 多架构脆弱路径），失败则构建失败
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN mkdir -p /ms-playwright \
-    && patchright install chromium \
+RUN patchright install chromium \
     || { echo "[ERROR] patchright chromium install failed" >&2; exit 1; }
 
 # 2. 项目源码

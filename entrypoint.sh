@@ -31,7 +31,6 @@ case "$CMD" in
     exec python -u collect.py --all --refresh --overwrite --skip "$@"
     ;;
   checkin)
-    cd /aggregator/subscribe
     exec python -u /aggregator/.github/actions/checkin/universal.py "$@"
     ;;
   -h|--help|help)

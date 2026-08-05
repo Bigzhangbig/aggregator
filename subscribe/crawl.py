@@ -1355,6 +1355,7 @@ def check_status(
             spare_time=spare_time,
             tolerance=tolerance,
             connectable=connectable,
+            cookie=cookie,
         )
 
 

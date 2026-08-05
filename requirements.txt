@@ -3,4 +3,4 @@ tqdm
 geoip2
 pycryptodomex
 fofa-hack
-patchright
+patchright>=1.40
