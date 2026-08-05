@@ -39,7 +39,7 @@ jobs:
   process:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/wzdnzd/aggregator:latest
+      image: ghcr.io/bigzhangbig/aggregator:latest
 
     steps:
       - name: Check
