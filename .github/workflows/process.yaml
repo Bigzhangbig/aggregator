@@ -1,12 +1,17 @@
 name: Process
 on:
+  # 每日 03:05 / 11:05 UTC（GitHub Actions cron 按 UTC 解析，= 北京时间 11:05 / 19:05）
   schedule:
     - cron: "05 03 * * *"
     - cron: "05 11 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.repository }}-process
+  cancel-in-progress: false
+
 env:
-  # time zone
+  # TZ 仅影响容器内 date 命令和 Python time，不影响 cron 触发时间（cron 按 UTC 解析）
   TZ: Asia/Shanghai
 
   # network proxy aggregate config
@@ -27,7 +32,7 @@ env:
   # workflow mode
   WORKFLOW_MODE: ${{ vars.WORKFLOW_MODE }}
 
-  # include spwcial protocols, such vless hysteria2 and hysteria
+  # include special protocols, such vless hysteria2 and hysteria
   ENABLE_SPECIAL_PROTOCOLS: ${{ vars.ENABLE_SPECIAL_PROTOCOLS }}
 
 jobs:
@@ -37,10 +42,17 @@ jobs:
       image: ghcr.io/wzdnzd/aggregator:latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
+      - name: Check
+        run: |
+          if [ -z "$SUBSCRIBE_CONF" ]; then
+              echo "Error: environment 'SUBSCRIBE_CONF' cannot be empty"
+              exit 1
+          fi
+
+          if [ -z "$PUSH_TOKEN" ]; then
+              echo "Error: environment 'PUSH_TOKEN' cannot be empty"
+              exit 1
+          fi
 
       - name: Process
         run: /entrypoint.sh process --overwrite
