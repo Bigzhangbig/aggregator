@@ -51,7 +51,8 @@ jobs:
             | jq -r '.files["checkin-config.json"].content // empty')
 
           if [ -n "$CONTENT" ]; then
-            echo "$CONTENT" > /aggregator/.github/actions/checkin/config.json
+            printf '%s\n' "$CONTENT" > /aggregator/.github/actions/checkin/config.json
+            python3 -c "import json; json.load(open('/aggregator/.github/actions/checkin/config.json')); print('config.json valid JSON')" 2>&1 || echo "config.json INVALID JSON"
             echo "Fetched checkin config from Gist ($(wc -c < /aggregator/.github/actions/checkin/config.json) bytes)"
           else
             echo "No checkin-config.json in Gist yet, keeping image placeholder"
