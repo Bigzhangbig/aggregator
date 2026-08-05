@@ -1,16 +1,16 @@
 name: Refresh
 on:
-  # performed every two hours
+  # 每 2 小时（GitHub Actions cron 按 UTC 解析）
   schedule:
     - cron: "0 */2 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.repository }}
+  group: ${{ github.repository }}-refresh
   cancel-in-progress: true
 
 env:
-  # time zone
+  # TZ 仅影响容器内 date 命令和 Python time，不影响 cron 触发时间（cron 按 UTC 解析）
   TZ: Asia/Shanghai
 
   # github access token
@@ -23,7 +23,7 @@ env:
   # each line include domain, coupon and invitation code, the domain must be included, and the latter two items are optional
   CUSTOMIZE_LINK: ${{ secrets.CUSTOMIZE_LINK }}
 
-  # include special protocols, such as vless hysteria2 and hysteria
+  # include special protocols, such vless hysteria2 and hysteria
   ENABLE_SPECIAL_PROTOCOLS: ${{ vars.ENABLE_SPECIAL_PROTOCOLS }}
 
 jobs:
@@ -33,11 +33,6 @@ jobs:
       image: ghcr.io/wzdnzd/aggregator:latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
       - name: Check
         run: |
           if [ -z "$GIST_PAT" ]; then
