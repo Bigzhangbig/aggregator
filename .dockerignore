@@ -1,4 +1,15 @@
 *.log
 *.pyc
-.git
 __pycache__
+.git
+.github/workflows
+.github/ISSUE_TEMPLATE
+data
+docs
+tools
+manager
+README.md
+README_CN.md
+README_EN.md
+clash.ico
+pyarmor.bug.log
