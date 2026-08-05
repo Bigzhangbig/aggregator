@@ -16,8 +16,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /aggregator
 
-# 1. 系统依赖：jq（checkin.yml 用 jq 解析 Gist API 响应，python:3.12-slim 不预装）
-RUN apt-get update && apt-get install -y --no-install-recommends jq \
+# 1. 系统依赖：jq + curl（checkin.yml 用 curl 读 Gist API、jq 解析响应，python:3.12-slim 不预装）
+RUN apt-get update && apt-get install -y --no-install-recommends jq curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Python 依赖（缓存优化）
