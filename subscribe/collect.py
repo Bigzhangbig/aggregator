@@ -471,6 +471,7 @@ def aggregate(args: argparse.Namespace) -> None:
             files[subscribes_file] = {"content": "\n".join(urls), "filename": subscribes_file}
 
         # 收集本次新注册的机场凭据，合并已有 Gist 配置后作为 checkin 入参推送
+        # 注意：明文密码推到 Gist，Gist 必须设为 secret 且 PAT 严格管理（见 docs/CHECKIN_INTEGRATION_PLAN.md §风险）
         checkin_filename = "checkin-config.json"
         checkin_entries = _collect_checkin_entries(tasks=tasks)
         if checkin_entries:
@@ -482,10 +483,16 @@ def aggregate(args: argparse.Namespace) -> None:
             )
             for entry in checkin_entries:
                 merged[entry["domain"]] = entry
-            files[checkin_filename] = {
-                "content": json.dumps({"domains": list(merged.values())}, ensure_ascii=False, indent=2),
-                "filename": checkin_filename,
-            }
+            checkin_content = json.dumps({"domains": list(merged.values())}, ensure_ascii=False, indent=2)
+            files[checkin_filename] = {"content": checkin_content, "filename": checkin_filename}
+
+            # 本地 fallback：即使 Gist 推送失败，凭据也落盘到 data/，下次 collect 可从本地恢复
+            try:
+                os.makedirs(DATA_BASE, exist_ok=True)
+                with open(os.path.join(DATA_BASE, checkin_filename), "w", encoding="utf8") as f:
+                    f.write(checkin_content)
+            except Exception as e:
+                logger.warning(f"[CheckinFallback] failed to write local checkin config: {e}")
 
         if files:
             push_client = push.PushToGist(token=access_token)
