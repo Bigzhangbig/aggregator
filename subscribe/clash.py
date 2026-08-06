@@ -584,12 +584,20 @@ def verify(item: dict, mihomo: bool = True) -> bool:
 
                 public_key = item.get("public-key", "")
                 peers = item.get("peers")
-                if public_key:
+                if public_key and utils.trim(public_key):
                     if not isinstance(public_key, str):
                         return False
                 elif isinstance(peers, list) and peers:
                     for peer in peers:
-                        if not isinstance(peer, dict) or not isinstance(peer.get("public-key"), str):
+                        if (
+                            not isinstance(peer, dict)
+                            or not isinstance(peer.get("public-key"), str)
+                            or not utils.trim(peer.get("public-key"))
+                            or not isinstance(peer.get("server"), str)
+                            or not utils.trim(peer.get("server"))
+                            or not utils.is_number(peer.get("port"))
+                            or not 0 < int(peer.get("port")) <= 65535
+                        ):
                             return False
                 else:
                     return False
