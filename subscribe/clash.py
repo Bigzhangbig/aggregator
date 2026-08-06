@@ -171,6 +171,22 @@ def proxies_exists(proxy: dict, hosts: dict) -> bool:
                 return True
             if "auth_str" in p and p.get("auth_str", "") == value:
                 return True
+    elif protocol == "wireguard":
+        def first_key(p):
+            pk = p.get("public-key", "")
+            if pk:
+                return pk
+            peers = p.get("peers")
+            if isinstance(peers, list) and peers and isinstance(peers[0], dict):
+                return peers[0].get("public-key", "")
+            return ""
+
+        target = first_key(proxy)
+        if not target:
+            return False
+        return any(first_key(p) == target for p in proxies)
+    elif protocol == "shadowtls":
+        return any(p.get("password", "") == proxy.get("password", "") for p in proxies)
 
     return False
 
@@ -245,7 +261,7 @@ SSR_SUPPORTED_PROTOCOL = [
 
 VMESS_SUPPORTED_CIPHERS = ["auto", "aes-128-gcm", "chacha20-poly1305", "none"]
 
-SPECIAL_PROTOCOLS = set(["vless", "tuic", "hysteria", "hysteria2", "anytls"])
+SPECIAL_PROTOCOLS = set(["vless", "tuic", "hysteria", "hysteria2", "anytls", "wireguard", "shadowtls"])
 
 VLESS_MLKEM_X25519_PLUS_PREFIX = "mlkem768x25519plus"
 VLESS_MLKEM_X25519_PLUS_MODES = ("native", "xorpub", "random")
@@ -558,6 +574,51 @@ def verify(item: dict, mihomo: bool = True) -> bool:
                 for property in ["idle-session-check-interval", "idle-session-timeout", "min-idle-session"]:
                     if property in item and (not utils.is_number(item[property]) or int(item[property]) < 0):
                         return False
+
+            elif item["type"] == "wireguard":
+                # mihomo: https://wiki.metacubex.one/config/proxies/wireguard
+                authentication = "private-key"
+                private_key = item.get("private-key", "")
+                if not isinstance(private_key, str) or not utils.trim(private_key):
+                    return False
+
+                public_key = item.get("public-key", "")
+                peers = item.get("peers")
+                if public_key:
+                    if not isinstance(public_key, str):
+                        return False
+                elif isinstance(peers, list) and peers:
+                    for peer in peers:
+                        if not isinstance(peer, dict) or not isinstance(peer.get("public-key"), str):
+                            return False
+                else:
+                    return False
+
+                ip = item.get("ip", "")
+                if not isinstance(ip, str) or not utils.trim(ip):
+                    return False
+                if "ipv6" in item and not isinstance(item["ipv6"], str):
+                    return False
+                if "mtu" in item and (not utils.is_number(item["mtu"]) or int(item["mtu"]) <= 0):
+                    return False
+                if "dns" in item and type(item["dns"]) != list:
+                    return False
+
+            elif item["type"] == "shadowtls":
+                # mihomo: https://wiki.metacubex.one/config/proxies/shadowtls
+                authentication = "password"
+                password = item.get("password", "")
+                if not isinstance(password, str) or not utils.trim(password):
+                    return False
+
+                if "version" not in item or not utils.is_number(item["version"]) or int(item["version"]) not in [1, 2, 3]:
+                    return False
+
+                sni = item.get("sni", "")
+                if not isinstance(sni, str) or not utils.trim(sni):
+                    return False
+                if "alpn" in item and type(item["alpn"]) != list:
+                    return False
 
             elif item["type"] == "vless":
                 authentication = "uuid"
