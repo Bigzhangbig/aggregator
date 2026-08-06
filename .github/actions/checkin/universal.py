@@ -13,6 +13,8 @@ import multiprocessing
 import os
 import ssl
 import json
+import sys
+import base64
 
 warnings.filterwarnings("ignore")
 
@@ -251,7 +253,55 @@ def flow(domain, params, headers) -> bool:
         headers["cookie"] = cookie
         checkin(checkin_url, headers, 3)
 
+    # 签到成功后尝试续期（仅 v2board，renewal.add_traffic_flow 用 V2Board API）
+    if checkin_type == "v2board":
+        try_renew(domain, params)
+
     return True
+
+
+def try_renew(domain: str, params: dict) -> None:
+    """签到成功后对 V2Board 机场尝试续期/重置流量。
+
+    开关：ENABLE_RENEW=true/1/yes 启用（默认关闭，不影响现有签到）。
+    续期失败仅 print 异常，不抛回 flow()（签到结果不受影响）。
+    renewal.add_traffic_flow 的 email/passwd 需 base64 编码（checkin-config.json 是明文）。
+    """
+    flag = os.environ.get("ENABLE_RENEW", "").strip().lower()
+    if flag not in ("1", "true", "yes"):
+        return
+
+    try:
+        # 推导项目根目录: .github/actions/checkin/universal.py -> 4 级 dirname -> <root>
+        root = os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
+        )
+        if root and root not in sys.path:
+            sys.path.insert(0, root)
+        from subscribe.renewal import add_traffic_flow
+    except Exception as e:
+        print(f"[RenewError] import renewal failed: {type(e).__name__}: {e}")
+        return
+
+    try:
+        email_b64 = base64.b64encode(str(params.get("email", "")).encode("utf-8")).decode("ascii")
+        passwd_b64 = base64.b64encode(str(params.get("passwd", "")).encode("utf-8")).decode("ascii")
+        renew_params = {
+            "email": email_b64,
+            "passwd": passwd_b64,
+            "api_prefix": params.get("api_prefix", "/api/v1/"),
+            "coupon_code": params.get("coupon_code", "") or "",
+            "enable": bool(params.get("enable_renew", True)),
+        }
+        sub_url = add_traffic_flow(domain, renew_params, jsonify=False)
+        if sub_url:
+            print(f"[RenewFinished] domain: {domain}\tsub: {sub_url}")
+        else:
+            print(f"[RenewSkipped] domain: {domain}\tno sub_url returned (skip or fail)")
+    except Exception as e:
+        print(f"[RenewError] domain: {domain}\t{type(e).__name__}: {e}")
 
 
 def wrapper(args) -> bool:

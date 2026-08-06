@@ -233,11 +233,13 @@ def _collect_checkin_entries(tasks: list) -> list:
             login_path = "/api/v1/login"
             checkin_path = "/api/v1/doCheckIn"
             checkin_type = "proxypanel"
+            api_prefix = "/api/v1/"
         elif panel_type == "sspanel" or (not panel_type and not utils.trim(getattr(t, "api_prefix", ""))):
             # SSPanel: /auth/login + /user/checkin（Cookie）
             login_path = "/auth/login"
             checkin_path = "/user/checkin"
             checkin_type = "sspanel"
+            api_prefix = ""
         else:
             # V2Board: {api_prefix}passport/auth/login + {api_prefix}user/checkin（Bearer）
             api_prefix = utils.trim(getattr(t, "api_prefix", "")) or "/api/v1/"
@@ -245,16 +247,24 @@ def _collect_checkin_entries(tasks: list) -> list:
             checkin_path = f"{api_prefix}user/checkin"
             checkin_type = "v2board"
 
+        # 透传续期相关字段（仅 v2board，renewal.add_traffic_flow 用 V2Board API）
+        # universal.py 在签到成功后、ENABLE_RENEW=true 时调用 add_traffic_flow
+        param = {
+            "email": t.email,
+            "passwd": t.passwd,
+            "login": login_path,
+            "checkin": checkin_path,
+            "type": checkin_type,
+        }
+        if checkin_type == "v2board":
+            param["api_prefix"] = api_prefix
+            param["coupon_code"] = getattr(t, "coupon", "") or ""
+            param["enable_renew"] = True
+
         entries.append(
             {
                 "domain": domain,
-                "param": {
-                    "email": t.email,
-                    "passwd": t.passwd,
-                    "login": login_path,
-                    "checkin": checkin_path,
-                    "type": checkin_type,
-                },
+                "param": param,
             }
         )
     return entries
