@@ -295,7 +295,10 @@ def try_renew(domain: str, params: dict) -> None:
             "coupon_code": params.get("coupon_code", "") or "",
             "enable": bool(params.get("enable_renew", True)),
         }
-        sub_url = add_traffic_flow(domain, renew_params, jsonify=False)
+        # jsonify=True 用于 legacy Paddy 面板（/api?scheme=），与 workflow.py 行为一致
+        sub_url = add_traffic_flow(
+            domain, renew_params, jsonify=renew_params["api_prefix"] == "/api?scheme="
+        )
         if sub_url:
             print(f"[RenewFinished] domain: {domain}\tsub: {sub_url}")
         else:
