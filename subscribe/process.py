@@ -643,7 +643,7 @@ def aggregate(args: argparse.Namespace) -> None:
                             api_url=clash.EXTERNAL_CONTROLLER,
                             mixed_port=streaming._MIXED_PORT,
                             selector_name=streaming._DEFAULT_SELECTOR,
-                            timeout=5000,
+                            timeout=5,
                             base_tags_map=base_tags_map,
                         )
                         if merged:

@@ -369,7 +369,7 @@ def _youtube_body(mixed_port: int, timeout: int) -> str:
 
 
 def _tiktok_body(mixed_port: int, timeout: int) -> str:
-    """TikTok：cdn-cgi/trace 抓 region；403/451 或 fall back 到首页。"""
+    """TikTok：cdn-cgi/trace 抓 region；403/451 或 fall back 到首页；都失败返回空。"""
     status, body = _fetch_via_mixed(
         mixed_port,
         "https://www.tiktok.com/cdn-cgi/trace",
@@ -379,14 +379,14 @@ def _tiktok_body(mixed_port: int, timeout: int) -> str:
         return ""
     if not body:
         status, body = _fetch_via_mixed(mixed_port, "https://www.tiktok.com/", timeout=timeout)
-        if status in (403, 451):
+        if status in (403, 451) or not body:
             return ""
     region = _extract_region(body, [r'"region"\s*:\s*"([a-zA-Z-]+)"'])
-    if region:
-        # 形如 "us-east" 取首段大写
-        region = region.split("-")[0].upper()
-        return f"TK-{region}"
-    return "TK"
+    if not region:
+        return ""
+    # 形如 "us-east" 取首段大写
+    region = region.split("-")[0].upper()
+    return f"TK-{region}"
 
 
 def _gemini_body(mixed_port: int, timeout: int) -> str:
@@ -526,6 +526,7 @@ def check_streaming_body(
 ) -> str:
     """对单个节点切换 selector → 串行请求所有第二阶段平台 → 返回升级后的标签。
     base_tags 是第一阶段已暂存的标签（[NF]/[NF*]/[GPT]），用于升级地区码。
+    timeout 单位为秒（urllib.request 约定，5s=默认与第一阶段 clash API 5s 对齐）。
     任何异常均不影响返回（单个平台失败跳过）。"""
     if not proxy_name or not api_url:
         return ""
@@ -569,8 +570,10 @@ def check_streaming_body_batch(
     proxies: list, api_url: str, mixed_port: int, selector_name: str, timeout: int, base_tags_map: dict = None
 ) -> dict:
     """按 server:port 去重后，串行检测每个唯一 IP；第二阶段结果覆盖第一阶段。
-    返回 {server:port: merged_tags} 供调用方写入 _PENDING_TAGS。
+    返回 {server:port: merged_tags} 供调用方写入 _PENDING_TAGS（按 server:port
+    匹配，同 IP 多节点由 apply_pending_tags 自动复制）。
     base_tags_map: 第一阶段 store_tags 留下的暂存标签（key=server:port），用于升级。
+    timeout 单位为秒（同 check_streaming_body）。
     selector 切换是串行的：每次切换后连续请求所有平台，不重复切换。
     """
     if not proxies or not isinstance(proxies, list):
@@ -615,13 +618,5 @@ def check_streaming_body_batch(
         )
         if merged:
             results[key] = merged
-
-    # 3) 复制到同 IP 的其他节点
-    for key, group in ip_to_proxies.items():
-        tag = results.get(key, "")
-        if not tag:
-            continue
-        for _ in group:
-            pass  # 结果按 server:port 索引回写，不就地修改 proxy
 
     return results
