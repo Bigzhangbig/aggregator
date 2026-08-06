@@ -632,6 +632,23 @@ def aggregate(args: argparse.Namespace) -> None:
                         if t:
                             streaming.store_tags(target, t)
 
+                    # 第二阶段 mixed-port 响应体检测：升级 Netflix/ChatGPT 地区码，
+                    # 新增 YouTube/TikTok/Gemini/Claude/Disney+ 检测。selector 切换是
+                    # 全局副作用，必须在 terminate clash 前完成（mixed-port 7890 也会随
+                    # terminate 关闭）。STREAMING_BODY_CHECK=true/1 时开启。
+                    if streaming._is_body_check_enabled():
+                        base_tags_map = streaming.get_pending_tags_snapshot()
+                        merged = streaming.check_streaming_body_batch(
+                            proxies=streaming_targets,
+                            api_url=clash.EXTERNAL_CONTROLLER,
+                            mixed_port=streaming._MIXED_PORT,
+                            selector_name=streaming._DEFAULT_SELECTOR,
+                            timeout=5000,
+                            base_tags_map=base_tags_map,
+                        )
+                        if merged:
+                            streaming.overwrite_pending_tags(merged)
+
                 # close clash client
                 try:
                     process.terminate()
