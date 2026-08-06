@@ -614,22 +614,23 @@ def aggregate(args: argparse.Namespace) -> None:
                 )
 
                 # 流媒体/AI 解锁检测（依赖 clash 控制器，需在 terminate 前完成）
-                # 标签通过 server:port 暂存到 stream_tags，regularize 之后再追加到节点名末尾
+                # 标签通过 server:port 暂存到 _PENDING_TAGS，regularize 之后再追加到节点名末尾
                 # 这样 regularize 的 rename() 重写 name 时不会丢失流媒体标签
                 availables = [checks[i] for i in range(len(checks)) if masks[i]]
-                streaming_params = [
-                    [p, clash.EXTERNAL_CONTROLLER, args.timeout] for p in availables if isinstance(p, dict)
-                ]
-                if streaming_params:
+                # streaming 检测独立 timeout（不与 clash.check 共享 args.timeout），
+                # 避免 7 平台 × 5s 累积导致 CI 拖慢；调用方仅需知道"够用即可"
+                streaming_targets = [p for p in availables if isinstance(p, dict)]
+                if streaming_targets:
+                    streaming_params = [[p, clash.EXTERNAL_CONTROLLER, 5000] for p in streaming_targets]
                     tags = utils.multi_thread_run(
                         func=streaming.check_streaming,
                         tasks=streaming_params,
                         num_threads=args.num,
                         show_progress=display,
                     )
-                    for i, t in enumerate(tags):
-                        if t and i < len(availables):
-                            streaming.store_tags(availables[i], t)
+                    for target, t in zip(streaming_targets, tags):
+                        if t:
+                            streaming.store_tags(target, t)
 
                 # close clash client
                 try:

@@ -408,17 +408,18 @@ def aggregate(args: argparse.Namespace) -> None:
         # 流媒体/AI 解锁检测（依赖 clash 控制器，需在 terminate 前完成）
         # 暂存标签，terminate clash 后再追加到节点名，避免标签被后续流程覆盖
         alive = [proxies[i] for i in range(len(proxies)) if masks[i]]
-        streaming_params = [[p, clash.EXTERNAL_CONTROLLER, 5000] for p in alive if isinstance(p, dict)]
-        if streaming_params:
+        streaming_targets = [p for p in alive if isinstance(p, dict)]
+        if streaming_targets:
+            streaming_params = [[p, clash.EXTERNAL_CONTROLLER, 5000] for p in streaming_targets]
             tags = utils.multi_thread_run(
                 func=streaming.check_streaming,
                 tasks=streaming_params,
                 num_threads=args.num,
                 show_progress=display,
             )
-            for i, t in enumerate(tags):
-                if t and i < len(alive):
-                    streaming.store_tags(alive[i], t)
+            for target, t in zip(streaming_targets, tags):
+                if t:
+                    streaming.store_tags(target, t)
 
         # 关闭clash
         try:
