@@ -17,6 +17,7 @@ import time
 import crawl
 import executable
 import push
+import streaming
 import utils
 import workflow
 import yaml
@@ -404,13 +405,31 @@ def aggregate(args: argparse.Namespace) -> None:
             show_progress=display,
         )
 
+        # 流媒体/AI 解锁检测（依赖 clash 控制器，需在 terminate 前完成）
+        # 暂存标签，terminate clash 后再追加到节点名，避免标签被后续流程覆盖
+        alive = [proxies[i] for i in range(len(proxies)) if masks[i]]
+        streaming_params = [[p, clash.EXTERNAL_CONTROLLER, 5000] for p in alive if isinstance(p, dict)]
+        if streaming_params:
+            tags = utils.multi_thread_run(
+                func=streaming.check_streaming,
+                tasks=streaming_params,
+                num_threads=args.num,
+                show_progress=display,
+            )
+            for i, t in enumerate(tags):
+                if t and i < len(alive):
+                    streaming.store_tags(alive[i], t)
+
         # 关闭clash
         try:
             process.terminate()
         except:
             logger.error(f"terminate clash process error")
 
-        nodes = [proxies[i] for i in range(len(proxies)) if masks[i]]
+        # 追加暂存的标签到节点名
+        streaming.apply_pending_tags(alive)
+
+        nodes = alive
         if len(nodes) <= 0:
             logger.error(f"cannot fetch any proxy")
             sys.exit(0)

@@ -22,6 +22,7 @@ import crawl
 import executable
 import location
 import push
+import streaming
 import utils
 import workflow
 import yaml
@@ -612,13 +613,30 @@ def aggregate(args: argparse.Namespace) -> None:
                     show_progress=display,
                 )
 
+                # 流媒体/AI 解锁检测（依赖 clash 控制器，需在 terminate 前完成）
+                # 标签通过 server:port 暂存到 stream_tags，regularize 之后再追加到节点名末尾
+                # 这样 regularize 的 rename() 重写 name 时不会丢失流媒体标签
+                availables = [checks[i] for i in range(len(checks)) if masks[i]]
+                streaming_params = [
+                    [p, clash.EXTERNAL_CONTROLLER, args.timeout] for p in availables if isinstance(p, dict)
+                ]
+                if streaming_params:
+                    tags = utils.multi_thread_run(
+                        func=streaming.check_streaming,
+                        tasks=streaming_params,
+                        num_threads=args.num,
+                        show_progress=display,
+                    )
+                    for i, t in enumerate(tags):
+                        if t and i < len(availables):
+                            streaming.store_tags(availables[i], t)
+
                 # close clash client
                 try:
                     process.terminate()
                 except:
                     logger.error(f"terminate clash process error, group: {k}")
 
-                availables = [checks[i] for i in range(len(checks)) if masks[i]]
                 nochecks.extend(availables)
 
                 dead = len(checks) - len(availables)
@@ -654,6 +672,10 @@ def aggregate(args: argparse.Namespace) -> None:
                 ip_library=ip_library,
                 digits=bits,
             )
+
+        # regularize 可能重写 name（包括 GeoIP 命中时的完全覆写），标签必须在最后追加
+        # 用 server:port 作为稳定 key 跨 regularize 匹配
+        streaming.apply_pending_tags(nochecks)
 
         source_file, data = "config.yaml", {"proxies": nochecks}
         filepath = os.path.join(PATH, "subconverter", source_file)
